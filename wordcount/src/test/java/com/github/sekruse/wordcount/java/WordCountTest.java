@@ -36,10 +36,11 @@ public class WordCountTest {
         // Prepare.
         WordCount wordCount = new WordCount(new Configuration(), plugins);
         final String inputUrl = ReflectionUtils.getResourceURL("lorem-ipsum.txt").toString();
+        final Boolean caseSensitive = false;
 
         // Run.
         Map<String, Integer> wordCounts = wordCount
-                .execute(inputUrl)
+                .execute(inputUrl, caseSensitive)
                 .stream()
                 .collect(Collectors.toMap(Tuple2::getField0, Tuple2::getField1));
 

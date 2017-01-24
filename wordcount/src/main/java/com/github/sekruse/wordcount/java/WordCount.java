@@ -1,5 +1,7 @@
 package com.github.sekruse.wordcount.java;
 
+import com.sun.org.apache.xpath.internal.operations.Bool;
+import com.sun.tools.jdi.BooleanValueImpl;
 import org.qcri.rheem.api.JavaPlanBuilder;
 import org.qcri.rheem.basic.data.Tuple2;
 import org.qcri.rheem.core.api.Configuration;
@@ -46,8 +48,8 @@ public class WordCount {
      * @param inputUrl URL to the input file
      * @return the word counts
      */
-    public Collection<Tuple2<String, Integer>> execute(String inputUrl) {
-        return this.execute(inputUrl, new ProbabilisticDoubleInterval(100, 10000, 0.8));
+    public Collection<Tuple2<String, Integer>> execute(String inputUrl, Boolean caseSensitive) {
+        return this.execute(inputUrl, caseSensitive, new ProbabilisticDoubleInterval(100, 10000, 0.8));
     }
 
     /**
@@ -57,7 +59,7 @@ public class WordCount {
      * @param wordsPerLine alleged words per line in the input file
      * @return the word counts
      */
-    public Collection<Tuple2<String, Integer>> execute(String inputUrl, ProbabilisticDoubleInterval wordsPerLine) {
+    public Collection<Tuple2<String, Integer>> execute(String inputUrl, Boolean caseSensitive, ProbabilisticDoubleInterval wordsPerLine) {
         // Prepare the Rheem context.
         RheemContext rheemContext = new RheemContext(this.configuration);
         this.plugins.forEach(rheemContext::register);
@@ -82,7 +84,7 @@ public class WordCount {
                 .withName("Filter empty words")
 
                 // Attach counter to each word.
-                .map(word -> new Tuple2<>(word.toLowerCase(), 1)).withName("To lower case, add counter")
+                .map(word -> new Tuple2<>(caseSensitive ? word : word.toLowerCase(), 1)).withName("To lower case, add counter")
 
                 // Sum up counters for every word.
                 .reduceByKey(
@@ -97,13 +99,26 @@ public class WordCount {
     }
 
     public static void main(String[] args) {
-        if (args.length == 0) {
-            System.out.println("Usage: <main class> <plugin(,plugin)*> <input file> [<words per line a..b>]");
+        if (args.length < 3) {
+            System.out.println("Usage: <main class> <plugin(,plugin)*> <input file> <--case-sensitive=True/False> [<words per line a..b>]");
             System.exit(1);
         }
         Plugin[] plugins = parsePlugins(args[0]);
         String inputUrl = args[1];
-        ProbabilisticDoubleInterval wordsPerLine = args.length > 2 ? parseWordsPerLine(args[2]) : null;
+        Boolean caseSensitive = true;
+
+
+        if (args[2].equals("--case-sensitive=True")) {
+            caseSensitive = true;
+        } else if (args[2].equals("--case-sensitive=False")) {
+            caseSensitive = false;
+        } else {
+            System.out.println("Usage: <main class> <plugin(,plugin)*> <input file> <--case-sensitive=True/False> [<words per line a..b>]");
+            System.exit(1);
+        }
+
+
+        ProbabilisticDoubleInterval wordsPerLine = args.length > 3 ? parseWordsPerLine(args[3]) : null;
 
         // Set up our wordcount app.
         Configuration configuration = new Configuration();
@@ -111,8 +126,8 @@ public class WordCount {
 
         // Run the wordcount.
         Collection<Tuple2<String, Integer>> wordCounts = wordsPerLine == null ?
-                wordCount.execute(inputUrl) :
-                wordCount.execute(inputUrl, wordsPerLine);
+                wordCount.execute(inputUrl, caseSensitive) :
+                wordCount.execute(inputUrl, caseSensitive, wordsPerLine);
 
         // Print the results.
         System.out.printf("Found %d words:\n", wordCounts.size());
