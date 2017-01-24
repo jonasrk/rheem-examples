@@ -11,3 +11,5 @@ buildNumber.properties
 # IntelliJ
 .idea/
 *.iml
+notebooks/examples/.ipynb_checkpoints/*
+notebooks/examples/rheem-examples.ipynb
