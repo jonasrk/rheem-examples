@@ -24,7 +24,7 @@ import java.util.List;
 public class RunSGD {
 
     // Default parameters.
-    static String relativePath = "src/main/resources/adult.zeros";
+    static String relativePath = "/Users/jonas/sgd.zeros";
     static int datasetSize  = 100827;
     static int features = 123;
 
@@ -77,9 +77,7 @@ public class RunSGD {
                     .sample(sampleSize)
 //                    .<double[]>customOperator(new SparkRandomPartitionSampleOperator<>(sampleSize, datasetSize, DataSetType.createDefault(double[].class)))
 //                    .withOutputClass(double[].class)
-                    .map(new ComputeLogisticGradient()).withBroadcast(w, "weights").withName("compute")
-                    .reduce(new Sum()).withName("reduce")
-                    .map(new WeightsUpdate()).withBroadcast(w, "weights").withName("update");
+                    .map(new ComputeLogisticGradient()).withBroadcast(w, "weights").withName("compute");
 
             DataQuantaBuilder<?, Tuple2<Double, Double>> convergenceDataset = newWeightsDataset.map(new ComputeNorm()).withBroadcast(w, "weights");
 
