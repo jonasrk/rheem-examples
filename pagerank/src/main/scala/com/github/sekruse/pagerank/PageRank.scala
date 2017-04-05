@@ -82,11 +82,11 @@ object PageRank {
     val inputFile = args(1)
     val numIterations = args(2).toInt
 
-    // Set up our wordcount app.
+    // Set up our pagerank app.
     val configuration = new Configuration
     val pageRank = new PageRank(configuration, plugins: _*)
 
-    // Run the wordcount.
+    // Run the pagerank algorithm.
     val pageRanks = pageRank(inputFile, numIterations)
 
     // Print results.
