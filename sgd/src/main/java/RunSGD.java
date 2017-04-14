@@ -24,7 +24,7 @@ import java.util.List;
 public class RunSGD {
 
     // Default parameters.
-    static String relativePath = "src/main/resources/adult.zeros";
+    static String relativePath = "sgd/src/main/resources/adult.zeros";
     static int datasetSize  = 100827;
     static int features = 123;
 
