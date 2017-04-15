@@ -219,7 +219,6 @@ class ComputeNorm implements FunctionDescriptor.ExtendedSerializableFunction<dou
     }
 }
 
-
 class LoopCondition implements FunctionDescriptor.ExtendedSerializablePredicate<Collection<Tuple2<Double, Double>>> {
 
     public double accuracy;
