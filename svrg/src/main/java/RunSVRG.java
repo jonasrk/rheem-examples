@@ -94,37 +94,28 @@ public class RunSVRG {
 
             // START iteration ZERO
 
-                //.sample(sampleSize)
+                // operator lists:
+                ArrayList<DataQuantaBuilder<?, double[]>> sampleOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
+                sampleOperatorList.add(transformBuilder
+                        .sample(sampleSize)
+                        .map(new ComputeLogisticGradient()).withBroadcast(weightsBuilder, "weights").withName("compute")
+                        .reduce(new Sum()).withName("reduce")
+                        .map(new WeightsUpdate()).withBroadcast(weightsBuilder, "weights").withName("update"));
 
-                    DataQuantaBuilder<?, double[]> newWeightsDataset = transformBuilder
-                            .sample(sampleSize)
-                            .map(new ComputeLogisticGradient()).withBroadcast(weightsBuilder, "weights").withName("compute")
-                            .reduce(new Sum()).withName("reduce")
-                            .map(new WeightsUpdate()).withBroadcast(weightsBuilder, "weights").withName("update");
 
-            // END iteration ZERO
+        // END iteration ZERO
 
             // START other iterations
 
         int iterations = 2; // TODO JRK move to parameters
 
-        // operator lists:
-        ArrayList<DataQuantaBuilder<?, double[]>> sampleOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
-        sampleOperatorList.add(transformBuilder
-                .sample(sampleSize)
-                .map(new ComputeLogisticGradient()).withBroadcast(newWeightsDataset, "weights").withName("compute")
-                .reduce(new Sum()).withName("reduce")
-                .map(new WeightsUpdate()).withBroadcast(newWeightsDataset, "weights").withName("update"));
+        for (int i = 100; i < iterations; i++) {
 
-        for (int i = 0; i < iterations; i++) {
-
-            //.sample(sampleSize)
-
-            // .map(new ComputeLogisticGradient()).withBroadcast(w, "weights")
-
-            // .reduce(new Sum())
-
-            // .map(new WeightsUpdate())
+            sampleOperatorList.add(transformBuilder
+                    .sample(sampleSize)
+                    .map(new ComputeLogisticGradient()).withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights").withName("compute")
+                    .reduce(new Sum()).withName("reduce")
+                    .map(new WeightsUpdate()).withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights").withName("update"));
 
         }
 
