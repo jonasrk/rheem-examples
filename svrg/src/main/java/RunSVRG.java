@@ -94,13 +94,24 @@ public class RunSVRG {
 
             // START iteration ZERO
 
+        List<Integer> current_iteration = Arrays.asList(1);
+
+        DataQuantaBuilder<?, Integer> iteration_list = javaPlanBuilder
+                .loadCollection(current_iteration);
+
+
                 // operator lists:
                 ArrayList<DataQuantaBuilder<?, double[]>> sampleOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
-                sampleOperatorList.add(transformBuilder
+                sampleOperatorList.add(
+                        transformBuilder
                         .sample(sampleSize)
                         .map(new ComputeLogisticGradient()).withBroadcast(weightsBuilder, "weights").withName("compute")
                         .reduce(new Sum()).withName("reduce")
-                        .map(new WeightsUpdate()).withBroadcast(weightsBuilder, "weights").withName("update"));
+                        .map(new WeightsUpdate())
+                        .withBroadcast(weightsBuilder, "weights")
+                        .withBroadcast(iteration_list, "current_iteration")
+                        .withName("update")
+                );
 
 
         // END iteration ZERO
@@ -123,7 +134,7 @@ public class RunSVRG {
 
         // END OF NEW LOOP
 
-        System.out.println("Output weights:" + sampleOperatorList.get(sampleOperatorList.size() - 1).collect());
+        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(sampleOperatorList.get(sampleOperatorList.size() - 1).collect())));
 
 //        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(results)));
 
@@ -219,19 +230,34 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
     @Override
     public double[] apply(double[] input) {
 
+        System.out.println("### in WeightsUpdate function");
+        System.out.println("### input[0]: " + input[0]);
+        System.out.println("### weights.length: " + weights.length);
+
         double count = input[0];
         double alpha = (stepSize / (current_iteration+1));
+        System.out.println("### alpha: " + alpha);
+        System.out.println("### stepSize: " + stepSize);
+        System.out.println("### current_iteration+1: " + current_iteration+1);
+
         double[] newWeights = new double[weights.length];
         for (int j = 0; j < weights.length; j++) {
+            System.out.println("### j: " + j);
+            System.out.println("### regulizer: " + regulizer);
+            System.out.println("### weights[j]: " + weights[j]);
+            System.out.println("### count: " + count);
+            System.out.println("### input[j + 1]: " + input[j + 1]);
             newWeights[j] = (1 - alpha * regulizer) * weights[j] - alpha * (1.0 / count) * input[j + 1];
+            System.out.println("### newWeights[j]: " + newWeights[j]);
         }
+        System.out.println(newWeights);
         return newWeights;
     }
 
     @Override
     public void open(ExecutionContext executionContext) {
         this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
-        this.current_iteration = executionContext.getCurrentIteration();
+        this.current_iteration = ((Integer) executionContext.getBroadcast("current_iteration").iterator().next());
     }
 }
 

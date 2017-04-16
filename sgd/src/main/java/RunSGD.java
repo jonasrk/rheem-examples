@@ -31,7 +31,7 @@ public class RunSGD {
     //these are for SGD/mini run to convergence
     static int sampleSize = 10;
     static double accuracy = 0.001;
-    static int max_iterations = 1000;
+    static int max_iterations = 1;
 
 
     public static void main (String... args) throws MalformedURLException {
@@ -180,12 +180,27 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
     @Override
     public double[] apply(double[] input) {
 
+        System.out.println("### in WeightsUpdate function");
+        System.out.println("### input[0]: " + input[0]);
+        System.out.println("### weights.length: " + weights.length);
+
         double count = input[0];
         double alpha = (stepSize / (current_iteration+1));
+
+        System.out.println("### alpha: " + alpha);
+        System.out.println("### stepSize: " + stepSize);
+        System.out.println("### current_iteration+1: " + current_iteration+1);
         double[] newWeights = new double[weights.length];
         for (int j = 0; j < weights.length; j++) {
+            System.out.println("### j: " + j);
+            System.out.println("### regulizer: " + regulizer);
+            System.out.println("### weights[j]: " + weights[j]);
+            System.out.println("### count: " + count);
+            System.out.println("### input[j + 1]: " + input[j + 1]);
             newWeights[j] = (1 - alpha * regulizer) * weights[j] - alpha * (1.0 / count) * input[j + 1];
+            System.out.println("### newWeights[j]: " + newWeights[j]);
         }
+        System.out.println(newWeights);
         return newWeights;
     }
 
