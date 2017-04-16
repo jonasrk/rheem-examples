@@ -11,6 +11,7 @@ import org.qcri.rheem.spark.Spark;
 
 import java.io.File;
 import java.net.MalformedURLException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -97,36 +98,41 @@ public class RunSVRG {
 
                     DataQuantaBuilder<?, double[]> newWeightsDataset = transformBuilder
                             .sample(sampleSize)
-
-                // .map(new ComputeLogisticGradient()).withBroadcast(w, "weights")
-
                             .map(new ComputeLogisticGradient()).withBroadcast(weightsBuilder, "weights").withName("compute")
-
-                // .reduce(new Sum())
-
                             .reduce(new Sum()).withName("reduce")
-
-                // .map(new WeightsUpdate())
-
                             .map(new WeightsUpdate()).withBroadcast(weightsBuilder, "weights").withName("update");
 
             // END iteration ZERO
 
             // START other iterations
 
-                //.sample(sampleSize)
+        int iterations = 2; // TODO JRK move to parameters
 
-                // .map(new ComputeLogisticGradient()).withBroadcast(w, "weights")
+        // operator lists:
+        ArrayList<DataQuantaBuilder<?, double[]>> sampleOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
+        sampleOperatorList.add(transformBuilder
+                .sample(sampleSize)
+                .map(new ComputeLogisticGradient()).withBroadcast(newWeightsDataset, "weights").withName("compute")
+                .reduce(new Sum()).withName("reduce")
+                .map(new WeightsUpdate()).withBroadcast(newWeightsDataset, "weights").withName("update"));
 
-                // .reduce(new Sum())
+        for (int i = 0; i < iterations; i++) {
 
-                // .map(new WeightsUpdate())
+            //.sample(sampleSize)
+
+            // .map(new ComputeLogisticGradient()).withBroadcast(w, "weights")
+
+            // .reduce(new Sum())
+
+            // .map(new WeightsUpdate())
+
+        }
 
             // END other iterations
 
         // END OF NEW LOOP
 
-        System.out.println("Output weights:" + newWeightsDataset.collect());
+        System.out.println("Output weights:" + sampleOperatorList.get(sampleOperatorList.size() - 1).collect());
 
 //        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(results)));
 
