@@ -67,23 +67,62 @@ public class RunSVRG {
                 .readTextFile(fileName).withName("source")
                 .map(new Transform(features)).withName("transform");
 
-        Collection<double[]> results  =
-                weightsBuilder.doWhile(new LoopCondition(accuracy, max_iterations), w -> {
+
+        // START OF OLD LOOP
+
+//        Collection<double[]> results  =
+//                weightsBuilder.doWhile(new LoopCondition(accuracy, max_iterations), w -> {
+//
+//                    DataQuantaBuilder<?, double[]> newWeightsDataset = transformBuilder
+//                            .sample(sampleSize)
+////                    .<double[]>customOperator(new SparkRandomPartitionSampleOperator<>(sampleSize, datasetSize, DataSetType.createDefault(double[].class)))
+////                    .withOutputClass(double[].class)
+//                            .map(new ComputeLogisticGradient()).withBroadcast(w, "weights").withName("compute")
+//                            .reduce(new Sum()).withName("reduce")
+//                            .map(new WeightsUpdate()).withBroadcast(w, "weights").withName("update");
+//
+//                    DataQuantaBuilder<?, Tuple2<Double, Double>> convergenceDataset = newWeightsDataset.map(new ComputeNorm()).withBroadcast(w, "weights");
+//
+//                    return new Tuple<>(newWeightsDataset, convergenceDataset);
+//                }).collect();
+
+        // END OF OLD LOOP
+
+
+        // START OF NEW, UNROLLED LOOP
+
+            // START iteration ZERO
+
+                //.sample(sampleSize)
 
                     DataQuantaBuilder<?, double[]> newWeightsDataset = transformBuilder
-                            .sample(sampleSize)
-//                    .<double[]>customOperator(new SparkRandomPartitionSampleOperator<>(sampleSize, datasetSize, DataSetType.createDefault(double[].class)))
-//                    .withOutputClass(double[].class)
-                            .map(new ComputeLogisticGradient()).withBroadcast(w, "weights").withName("compute")
-                            .reduce(new Sum()).withName("reduce")
-                            .map(new WeightsUpdate()).withBroadcast(w, "weights").withName("update");
+                            .sample(sampleSize);
 
-                    DataQuantaBuilder<?, Tuple2<Double, Double>> convergenceDataset = newWeightsDataset.map(new ComputeNorm()).withBroadcast(w, "weights");
+                // .map(new ComputeLogisticGradient()).withBroadcast(w, "weights")
 
-                    return new Tuple<>(newWeightsDataset, convergenceDataset);
-                }).collect();
+                // .reduce(new Sum())
 
-        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(results)));
+                // .map(new WeightsUpdate())
+
+            // END iteration ZERO
+
+            // START other iterations
+
+                //.sample(sampleSize)
+
+                // .map(new ComputeLogisticGradient()).withBroadcast(w, "weights")
+
+                // .reduce(new Sum())
+
+                // .map(new WeightsUpdate())
+
+            // END other iterations
+
+        // END OF NEW LOOP
+
+        System.out.println("Output weights:" + newWeightsDataset.collect());
+
+//        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(results)));
 
     }
 }
