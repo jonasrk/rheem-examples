@@ -96,13 +96,19 @@ public class RunSVRG {
                 //.sample(sampleSize)
 
                     DataQuantaBuilder<?, double[]> newWeightsDataset = transformBuilder
-                            .sample(sampleSize);
+                            .sample(sampleSize)
 
                 // .map(new ComputeLogisticGradient()).withBroadcast(w, "weights")
 
+                            .map(new ComputeLogisticGradient()).withBroadcast(weightsBuilder, "weights").withName("compute")
+
                 // .reduce(new Sum())
 
+                            .reduce(new Sum()).withName("reduce")
+
                 // .map(new WeightsUpdate())
+
+                            .map(new WeightsUpdate()).withBroadcast(weightsBuilder, "weights").withName("update");
 
             // END iteration ZERO
 
