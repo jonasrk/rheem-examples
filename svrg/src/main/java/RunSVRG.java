@@ -16,6 +16,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
+
 /**
  * This class executes a stochastic gradient descent optimization on Rheem.
  */
@@ -94,7 +95,7 @@ public class RunSVRG {
 
             // START iteration ZERO
 
-        List<Integer> current_iteration = Arrays.asList(1);
+        List<Integer> current_iteration = Arrays.asList(0);
 
         DataQuantaBuilder<?, Integer> iteration_list = javaPlanBuilder
                 .loadCollection(current_iteration);
@@ -118,15 +119,29 @@ public class RunSVRG {
 
             // START other iterations
 
-        int iterations = 2; // TODO JRK move to parameters
+        int iterations = 101; // TODO JRK move to parameters
 
-        for (int i = 100; i < iterations; i++) {
+        for (int i = 1; i < iterations; i++) {
+
+            current_iteration = Arrays.asList(i);
+
+            iteration_list = javaPlanBuilder
+                    .loadCollection(current_iteration);
 
             sampleOperatorList.add(transformBuilder
                     .sample(sampleSize)
-                    .map(new ComputeLogisticGradient()).withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights").withName("compute")
+                    .withTargetPlatform(Java.platform())
+                    .map(new ComputeLogisticGradient())
+                    .withTargetPlatform(Java.platform())
+                    .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
+                    .withName("compute")
                     .reduce(new Sum()).withName("reduce")
-                    .map(new WeightsUpdate()).withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights").withName("update"));
+                    .withTargetPlatform(Java.platform())
+                    .map(new WeightsUpdate())
+                    .withTargetPlatform(Java.platform())
+                    .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
+                    .withBroadcast(iteration_list, "current_iteration")
+                    .withName("update"));
 
         }
 
@@ -230,27 +245,27 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
     @Override
     public double[] apply(double[] input) {
 
-        System.out.println("### in WeightsUpdate function");
-        System.out.println("### input[0]: " + input[0]);
-        System.out.println("### weights.length: " + weights.length);
+//        System.out.println("### in WeightsUpdate function");
+//        System.out.println("### input[0]: " + input[0]);
+//        System.out.println("### weights.length: " + weights.length);
 
         double count = input[0];
         double alpha = (stepSize / (current_iteration+1));
-        System.out.println("### alpha: " + alpha);
-        System.out.println("### stepSize: " + stepSize);
-        System.out.println("### current_iteration+1: " + current_iteration+1);
+//        System.out.println("### alpha: " + alpha);
+//        System.out.println("### stepSize: " + stepSize);
+        System.out.println("### current_iteration: " + current_iteration);
 
         double[] newWeights = new double[weights.length];
         for (int j = 0; j < weights.length; j++) {
-            System.out.println("### j: " + j);
-            System.out.println("### regulizer: " + regulizer);
-            System.out.println("### weights[j]: " + weights[j]);
-            System.out.println("### count: " + count);
-            System.out.println("### input[j + 1]: " + input[j + 1]);
+//            System.out.println("### j: " + j);
+//            System.out.println("### regulizer: " + regulizer);
+//            System.out.println("### weights[j]: " + weights[j]);
+//            System.out.println("### count: " + count);
+//            System.out.println("### input[j + 1]: " + input[j + 1]);
             newWeights[j] = (1 - alpha * regulizer) * weights[j] - alpha * (1.0 / count) * input[j + 1];
-            System.out.println("### newWeights[j]: " + newWeights[j]);
+//            System.out.println("### newWeights[j]: " + newWeights[j]);
         }
-        System.out.println(newWeights);
+//        System.out.println(newWeights);
         return newWeights;
     }
 

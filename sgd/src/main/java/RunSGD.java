@@ -31,7 +31,7 @@ public class RunSGD {
     //these are for SGD/mini run to convergence
     static int sampleSize = 10;
     static double accuracy = 0.001;
-    static int max_iterations = 1;
+    static int max_iterations = 1000;
 
 
     public static void main (String... args) throws MalformedURLException {
@@ -73,18 +73,17 @@ public class RunSGD {
         Collection<double[]> results  =
                 weightsBuilder.doWhile(new LoopCondition(accuracy, max_iterations), w -> {
 
-            DataQuantaBuilder<?, double[]> newWeightsDataset = transformBuilder
-                    .sample(sampleSize)
-//                    .<double[]>customOperator(new SparkRandomPartitionSampleOperator<>(sampleSize, datasetSize, DataSetType.createDefault(double[].class)))
-//                    .withOutputClass(double[].class)
-                    .map(new ComputeLogisticGradient()).withBroadcast(w, "weights").withName("compute")
-                    .reduce(new Sum()).withName("reduce")
-                    .map(new WeightsUpdate()).withBroadcast(w, "weights").withName("update");
+                    DataQuantaBuilder<?, double[]> newWeightsDataset = transformBuilder
+                            .sample(sampleSize).withBroadcast(w, "weights").withName("sample")
+//                    .<double[]>customOperator(new SparkRandomPartitionSampleOperator<>(sampleSize, datasetSize, DataSetType.createDefault(double[].class))).withBroadcast(w, "weights").withOutputClass(double[].class)
+                            .map(new ComputeLogisticGradient()).withBroadcast(w, "weights").withName("compute")
+                            .reduce(new Sum()).withName("reduce")
+                            .map(new WeightsUpdate()).withBroadcast(w, "weights").withName("update");
 
-            DataQuantaBuilder<?, Tuple2<Double, Double>> convergenceDataset = newWeightsDataset.map(new ComputeNorm()).withBroadcast(w, "weights");
+                    DataQuantaBuilder<?, Tuple2<Double, Double>> convergenceDataset = newWeightsDataset.map(new ComputeNorm()).withBroadcast(w, "weights");
 
-            return new Tuple<>(newWeightsDataset, convergenceDataset);
-        }).collect();
+                    return new Tuple<>(newWeightsDataset, convergenceDataset);
+                }).collect();
 
         System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(results)));
 
@@ -180,27 +179,12 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
     @Override
     public double[] apply(double[] input) {
 
-        System.out.println("### in WeightsUpdate function");
-        System.out.println("### input[0]: " + input[0]);
-        System.out.println("### weights.length: " + weights.length);
-
         double count = input[0];
         double alpha = (stepSize / (current_iteration+1));
-
-        System.out.println("### alpha: " + alpha);
-        System.out.println("### stepSize: " + stepSize);
-        System.out.println("### current_iteration+1: " + current_iteration+1);
         double[] newWeights = new double[weights.length];
         for (int j = 0; j < weights.length; j++) {
-            System.out.println("### j: " + j);
-            System.out.println("### regulizer: " + regulizer);
-            System.out.println("### weights[j]: " + weights[j]);
-            System.out.println("### count: " + count);
-            System.out.println("### input[j + 1]: " + input[j + 1]);
             newWeights[j] = (1 - alpha * regulizer) * weights[j] - alpha * (1.0 / count) * input[j + 1];
-            System.out.println("### newWeights[j]: " + newWeights[j]);
         }
-        System.out.println(newWeights);
         return newWeights;
     }
 
@@ -208,6 +192,7 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
     public void open(ExecutionContext executionContext) {
         this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
         this.current_iteration = executionContext.getCurrentIteration();
+        System.out.println(this.current_iteration);
     }
 }
 
@@ -233,6 +218,7 @@ class ComputeNorm implements FunctionDescriptor.ExtendedSerializableFunction<dou
         this.previousWeights = (double[]) executionContext.getBroadcast("weights").iterator().next();
     }
 }
+
 
 class LoopCondition implements FunctionDescriptor.ExtendedSerializablePredicate<Collection<Tuple2<Double, Double>>> {
 
