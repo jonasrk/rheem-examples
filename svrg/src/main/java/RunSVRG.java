@@ -105,10 +105,10 @@ public class RunSVRG {
                 ArrayList<DataQuantaBuilder<?, double[]>> sampleOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
                 sampleOperatorList.add(
                         transformBuilder
-                        .sample(sampleSize)
-                        .map(new ComputeLogisticGradient()).withBroadcast(weightsBuilder, "weights").withName("compute")
+//                        .sample(sampleSize)
+                        .map(new ComputeLogisticGradientFullIteration()).withBroadcast(weightsBuilder, "weights").withName("compute")
                         .reduce(new Sum()).withName("reduce")
-                        .map(new WeightsUpdate())
+                        .map(new WeightsUpdateFullIteration())
                         .withBroadcast(weightsBuilder, "weights")
                         .withBroadcast(iteration_list, "current_iteration")
                         .withName("update")
@@ -119,7 +119,7 @@ public class RunSVRG {
 
             // START other iterations
 
-        int iterations = 101; // TODO JRK move to parameters
+        int iterations = 5; // TODO JRK move to parameters
 
         for (int i = 1; i < iterations; i++) {
 
@@ -129,15 +129,15 @@ public class RunSVRG {
                     .loadCollection(current_iteration);
 
             sampleOperatorList.add(transformBuilder
-                    .sample(sampleSize)
-                    .withTargetPlatform(Java.platform())
-                    .map(new ComputeLogisticGradient())
+//                    .sample(sampleSize)
+//                    .withTargetPlatform(Java.platform())
+                    .map(new ComputeLogisticGradientFullIteration())
                     .withTargetPlatform(Java.platform())
                     .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
                     .withName("compute")
                     .reduce(new Sum()).withName("reduce")
                     .withTargetPlatform(Java.platform())
-                    .map(new WeightsUpdate())
+                    .map(new WeightsUpdateFullIteration())
                     .withTargetPlatform(Java.platform())
                     .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
                     .withBroadcast(iteration_list, "current_iteration")
@@ -205,6 +205,31 @@ class ComputeLogisticGradient implements FunctionDescriptor.ExtendedSerializable
     }
 }
 
+class ComputeLogisticGradientFullIteration implements FunctionDescriptor.ExtendedSerializableFunction<double[], double[]> {
+
+    double[] weights;
+
+    @Override
+    public double[] apply(double[] point) {
+        double[] gradient = new double[point.length];
+        double dot = 0;
+        for (int j = 0; j < weights.length; j++)
+            dot += weights[j] * point[j + 1];
+
+        for (int j = 0; j < weights.length; j++)
+            gradient[j + 1] = ((1 / (1 + Math.exp(-1 * dot))) - point[0]) * point[j + 1];
+
+        gradient[0] = 1; //counter for the step size required in the update
+
+        return gradient;
+    }
+
+    @Override
+    public void open(ExecutionContext executionContext) {
+        this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
+    }
+}
+
 class Sum implements FunctionDescriptor.SerializableBinaryOperator<double[]> {
 
     @Override
@@ -238,6 +263,55 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
     public WeightsUpdate () { }
 
     public WeightsUpdate (double stepSize, double regulizer) {
+        this.stepSize = stepSize;
+        this.regulizer = regulizer;
+    }
+
+    @Override
+    public double[] apply(double[] input) {
+
+//        System.out.println("### in WeightsUpdate function");
+//        System.out.println("### input[0]: " + input[0]);
+//        System.out.println("### weights.length: " + weights.length);
+
+        double count = input[0];
+        double alpha = (stepSize / (current_iteration+1));
+//        System.out.println("### alpha: " + alpha);
+//        System.out.println("### stepSize: " + stepSize);
+        System.out.println("### current_iteration: " + current_iteration);
+
+        double[] newWeights = new double[weights.length];
+        for (int j = 0; j < weights.length; j++) {
+//            System.out.println("### j: " + j);
+//            System.out.println("### regulizer: " + regulizer);
+//            System.out.println("### weights[j]: " + weights[j]);
+//            System.out.println("### count: " + count);
+//            System.out.println("### input[j + 1]: " + input[j + 1]);
+            newWeights[j] = (1 - alpha * regulizer) * weights[j] - alpha * (1.0 / count) * input[j + 1];
+//            System.out.println("### newWeights[j]: " + newWeights[j]);
+        }
+//        System.out.println(newWeights);
+        return newWeights;
+    }
+
+    @Override
+    public void open(ExecutionContext executionContext) {
+        this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
+        this.current_iteration = ((Integer) executionContext.getBroadcast("current_iteration").iterator().next());
+    }
+}
+
+class WeightsUpdateFullIteration implements FunctionDescriptor.ExtendedSerializableFunction<double[], double[]> {
+
+    double[] weights;
+    int current_iteration;
+
+    double stepSize = 1;
+    double regulizer = 0;
+
+    public WeightsUpdateFullIteration () { }
+
+    public WeightsUpdateFullIteration (double stepSize, double regulizer) {
         this.stepSize = stepSize;
         this.regulizer = regulizer;
     }
