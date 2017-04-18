@@ -135,11 +135,38 @@ public class RunSVRG {
 
         // START other iterations
 
-        int iterations = 125; // TODO JRK move to parameters
+        int iterations = 3; // TODO JRK move to parameters
 
         for (int i = 1; i < iterations; i++) {
 
-            if (i % 2 == 1){
+            if (false){//i == 3){
+
+
+                current_iteration = Arrays.asList(i);
+
+                iteration_list = javaPlanBuilder
+                        .loadCollection(current_iteration)
+                        .withTargetPlatform(Java.platform());
+
+                muOperatorList.add(transformBuilder
+//                    .sample(sampleSize)
+//                    .withTargetPlatform(Java.platform())
+                        .map(new ComputeLogisticGradientFullIteration())
+                        .withTargetPlatform(Java.platform())
+                        .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
+                        .withName("compute")
+                        .reduce(new Sum()).withName("reduce")
+                        .withTargetPlatform(Java.platform()));
+
+                FullOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)); // TODO JRK I need this. why crash?
+//                        .map(new WeightsUpdateFullIteration())
+//                        .withTargetPlatform(Java.platform())
+//                        .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
+//                        .withBroadcast(iteration_list, "current_iteration")
+//                        .withName("update"));
+            }
+
+            else if (i % 2 == 1){
 
                 current_iteration = Arrays.asList(i);
 
@@ -223,7 +250,7 @@ class Transform implements FunctionDescriptor.SerializableFunction<String, doubl
     }
 }
 
-class ComputeLogisticGradient implements FunctionDescriptor.ExtendedSerializableFunction<double[], double[]> {
+class ComputeLogisticGradientFullIteration implements FunctionDescriptor.ExtendedSerializableFunction<double[], double[]> {
 
     double[] weights;
 
@@ -248,7 +275,7 @@ class ComputeLogisticGradient implements FunctionDescriptor.ExtendedSerializable
     }
 }
 
-class ComputeLogisticGradientFullIteration implements FunctionDescriptor.ExtendedSerializableFunction<double[], double[]> {
+class ComputeLogisticGradient implements FunctionDescriptor.ExtendedSerializableFunction<double[], double[]> {
 
     double[] weights, weightsBar;
 
