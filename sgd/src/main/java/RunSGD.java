@@ -25,7 +25,7 @@ public class RunSGD {
 
     // Default parameters.
     static String relativePath = "sgd/src/main/resources/adult.zeros";
-    static int datasetSize  = 100827;
+    static int datasetSize  =    100827;
     static int features = 123;
 
     //these are for SGD/mini run to convergence

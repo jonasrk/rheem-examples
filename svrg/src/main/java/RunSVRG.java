@@ -108,8 +108,11 @@ public class RunSVRG {
 
 
         // operator lists:
-        ArrayList<DataQuantaBuilder<?, double[]>> sampleOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
-        sampleOperatorList.add(
+        ArrayList<DataQuantaBuilder<?, double[]>> FullOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
+        ArrayList<DataQuantaBuilder<?, double[]>> muOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
+        ArrayList<DataQuantaBuilder<?, double[]>> PartialOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
+
+        PartialOperatorList.add(
                 transformBuilder
 //                        .sample(sampleSize)
                         .map(new ComputeLogisticGradientFullIteration())
@@ -125,14 +128,14 @@ public class RunSVRG {
                         .withName("update")
         );
 
-        ArrayList<DataQuantaBuilder<?, double[]>> muOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
+
 
 
         // END iteration ZERO
 
         // START other iterations
 
-        int iterations = 200; // TODO JRK move to parameters // TODO JRK 20 iterations already runs more than a minute
+        int iterations = 125; // TODO JRK move to parameters
 
         for (int i = 1; i < iterations; i++) {
 
@@ -149,15 +152,15 @@ public class RunSVRG {
 //                    .withTargetPlatform(Java.platform())
                         .map(new ComputeLogisticGradientFullIteration())
                         .withTargetPlatform(Java.platform())
-                        .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
+                        .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         .withName("compute")
                         .reduce(new Sum()).withName("reduce")
                         .withTargetPlatform(Java.platform()));
 
-                sampleOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)
+                FullOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)
                         .map(new WeightsUpdateFullIteration())
                         .withTargetPlatform(Java.platform())
-                        .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
+                        .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         .withBroadcast(iteration_list, "current_iteration")
                         .withName("update"));
             } else {
@@ -168,17 +171,19 @@ public class RunSVRG {
                         .loadCollection(current_iteration)
                         .withTargetPlatform(Java.platform());
 
-                sampleOperatorList.add(transformBuilder
+                PartialOperatorList.add(transformBuilder
                         .sample(1)
                         .withTargetPlatform(Java.platform())
                         .map(new ComputeLogisticGradient())
                         .withTargetPlatform(Java.platform())
-                        .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
+                        .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weights")
                         .withName("compute")
                         .map(new WeightsUpdate())
                         .withTargetPlatform(Java.platform())
                         .withBroadcast(muOperatorList.get(muOperatorList.size() - 1), "mu")
-                        .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
+                        .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weights")
+                        .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weightsBar")
+                        // TODO JRK all these Full Operator references can not be right
                         .withBroadcast(iteration_list, "current_iteration")
                         .withName("update"));
             }
@@ -187,7 +192,7 @@ public class RunSVRG {
 
         // END OF NEW LOOP
 
-        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(sampleOperatorList.get(sampleOperatorList.size() - 1).collect())));
+        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(FullOperatorList.get(FullOperatorList.size() - 1).collect())));
 
 //        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(results)));
 
@@ -233,7 +238,7 @@ class ComputeLogisticGradient implements FunctionDescriptor.ExtendedSerializable
             gradient[j + 1] = ((1 / (1 + Math.exp(-1 * dot))) - point[0]) * point[j + 1];
 
         gradient[0] = 1; //counter for the step size required in the update
-
+//        System.out.println("half " + gradient[0]);
         return gradient;
     }
 
@@ -245,10 +250,9 @@ class ComputeLogisticGradient implements FunctionDescriptor.ExtendedSerializable
 
 class ComputeLogisticGradientFullIteration implements FunctionDescriptor.ExtendedSerializableFunction<double[], double[]> {
 
-    double[] weights;
+    double[] weights, weightsBar;
 
-    @Override
-    public double[] apply(double[] point) {
+    double[] calculateGradient(double[] weights, double[] point){
         double[] gradient = new double[point.length];
         double dot = 0;
         for (int j = 0; j < weights.length; j++)
@@ -258,13 +262,30 @@ class ComputeLogisticGradientFullIteration implements FunctionDescriptor.Extende
             gradient[j + 1] = ((1 / (1 + Math.exp(-1 * dot))) - point[0]) * point[j + 1];
 
         gradient[0] = 1; //counter for the step size required in the update
-
         return gradient;
+    }
+
+    @Override
+    public double[] apply(double[] point) {
+        double[] sumGrad = (double []) calculateGradient(weights, point);
+        double[] sumGradBar = (double []) calculateGradient(weightsBar, point);
+        double[] mergedGradients = mergeArrays(sumGrad, sumGradBar);
+        return mergedGradients;
+    }
+
+    private static double[] mergeArrays(double[] a, double[] b) {
+        int aLen = a.length;
+        int bLen = b.length;
+        double[] merged = new double[aLen + bLen];
+        System.arraycopy(a, 0, merged, 0, aLen);
+        System.arraycopy(b, 0, merged, aLen, bLen);
+        return merged;
     }
 
     @Override
     public void open(ExecutionContext executionContext) {
         this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
+        this.weightsBar = (double[]) executionContext.getBroadcast("weightsBar").iterator().next();
     }
 }
 
@@ -310,30 +331,22 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
     @Override
     public double[] apply(double[] input) {
 
-//        System.out.println("### in WeightsUpdate function");
-//        System.out.println("### input[0]: " + input[0]);
-//        System.out.println("### weights.length: " + weights.length);
-
         double count = input[0];
         double alpha = (stepSize / (current_iteration+1));
-//        System.out.println("### alpha: " + alpha);
-//        System.out.println("### stepSize: " + stepSize);
         System.out.println("### current_iteration: " + current_iteration);
 
         double[] newWeights = new double[weights.length];
         for (int j = 0; j < weights.length; j++) {
-//            System.out.println("### j: " + j);
-//            System.out.println("### regulizer: " + regulizer);
-//            System.out.println("### weights[j]: " + weights[j]);
-//            System.out.println("### count: " + count);
-//            System.out.println("### input[j + 1]: " + input[j + 1]);
-            newWeights[j] = (1 - alpha * regulizer) * weights[j] - alpha * (1.0 / count) * input[j + 1];
-            // TODO JRK I changed input[weights.length + j + 2] to input[j + 2] but don't really know why
-            newWeights[j] = weights[j] - alpha * (input[j + 1] - input[j + 1] + (1.0/count) * mu[j]) + lambda*alpha*weights[j];
-
-//            System.out.println("### newWeights[j]: " + newWeights[j]);
+            double regulizer_term = (1 - alpha * regulizer); // TODO JRK ignore this for now
+            double old_weight_term = weights[j];
+            double step_size_term = alpha * (1.0 / count);
+            double gradient_term = input[j + 1];
+            newWeights[j] = regulizer_term * old_weight_term - step_size_term * gradient_term;
+            double svrg_gradient_term =  (input[j + 1] - input[weights.length + j + 2] + (1.0/count) * mu[j]);
+            double svrg_regulizer_term = lambda*alpha*weights[j]; // TODO JRK is it really?
+            double svrg_stepsize_term = alpha;
+            newWeights[j] = old_weight_term - svrg_stepsize_term * svrg_gradient_term + svrg_regulizer_term;
         }
-//        System.out.println(newWeights);
         return newWeights;
     }
 
