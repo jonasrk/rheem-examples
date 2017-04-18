@@ -93,7 +93,7 @@ public class RunSVRG {
 
         // START OF NEW, UNROLLED LOOP
 
-            // START iteration ZERO
+        // START iteration ZERO
 
         List<Integer> current_iteration = Arrays.asList(0);
 
@@ -101,10 +101,10 @@ public class RunSVRG {
                 .loadCollection(current_iteration);
 
 
-                // operator lists:
-                ArrayList<DataQuantaBuilder<?, double[]>> sampleOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
-                sampleOperatorList.add(
-                        transformBuilder
+        // operator lists:
+        ArrayList<DataQuantaBuilder<?, double[]>> sampleOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
+        sampleOperatorList.add(
+                transformBuilder
 //                        .sample(sampleSize)
                         .map(new ComputeLogisticGradientFullIteration()).withBroadcast(weightsBuilder, "weights").withName("compute")
                         .reduce(new Sum()).withName("reduce")
@@ -112,40 +112,71 @@ public class RunSVRG {
                         .withBroadcast(weightsBuilder, "weights")
                         .withBroadcast(iteration_list, "current_iteration")
                         .withName("update")
-                );
+        );
+
+        ArrayList<DataQuantaBuilder<?, double[]>> muOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
 
 
         // END iteration ZERO
 
-            // START other iterations
+        // START other iterations
 
-        int iterations = 5; // TODO JRK move to parameters
+        int iterations = 3; // TODO JRK move to parameters
 
         for (int i = 1; i < iterations; i++) {
 
-            current_iteration = Arrays.asList(i);
+            if (i % 2 == 1){
 
-            iteration_list = javaPlanBuilder
-                    .loadCollection(current_iteration);
+                current_iteration = Arrays.asList(i);
 
-            sampleOperatorList.add(transformBuilder
+                iteration_list = javaPlanBuilder
+                        .loadCollection(current_iteration);
+
+                muOperatorList.add(transformBuilder
 //                    .sample(sampleSize)
 //                    .withTargetPlatform(Java.platform())
-                    .map(new ComputeLogisticGradientFullIteration())
-                    .withTargetPlatform(Java.platform())
-                    .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
-                    .withName("compute")
-                    .reduce(new Sum()).withName("reduce")
-                    .withTargetPlatform(Java.platform())
-                    .map(new WeightsUpdateFullIteration())
-                    .withTargetPlatform(Java.platform())
-                    .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
-                    .withBroadcast(iteration_list, "current_iteration")
-                    .withName("update"));
+                        .map(new ComputeLogisticGradientFullIteration())
+                        .withTargetPlatform(Java.platform())
+                        .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
+                        .withName("compute")
+                        .reduce(new Sum()).withName("reduce")
+                        .withTargetPlatform(Java.platform()));
+
+                sampleOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)
+                        .map(new WeightsUpdateFullIteration())
+                        .withTargetPlatform(Java.platform())
+                        .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
+                        .withBroadcast(iteration_list, "current_iteration")
+                        .withName("update"));
+            } else {
+
+                current_iteration = Arrays.asList(i);
+
+                iteration_list = javaPlanBuilder
+                        .loadCollection(current_iteration);
+
+                System.out.println("mu list:" + Arrays.toString(RheemCollections.getSingle(sampleOperatorList.get(muOperatorList.size() - 1).collect())));
+
+                sampleOperatorList.add(transformBuilder
+                        .sample(1)
+                        .withTargetPlatform(Java.platform())
+                        .map(new ComputeLogisticGradient())
+                        .withTargetPlatform(Java.platform())
+                        .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
+                        .withName("compute")
+                        .map(new WeightsUpdate())
+                        .withBroadcast(muOperatorList.get(muOperatorList.size() - 1), "mu")
+                        .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
+                        .withBroadcast(iteration_list, "current_iteration")
+                        .withTargetPlatform(Java.platform())
+                        .withName("update"));
+
+
+            }
 
         }
 
-            // END other iterations
+        // END other iterations
 
         // END OF NEW LOOP
 
@@ -255,7 +286,9 @@ class Sum implements FunctionDescriptor.SerializableBinaryOperator<double[]> {
 class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<double[], double[]> {
 
     double[] weights;
+    double[] mu;
     int current_iteration;
+    double lambda = 0;
 
     double stepSize = 1;
     double regulizer = 0;
@@ -288,6 +321,16 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
 //            System.out.println("### count: " + count);
 //            System.out.println("### input[j + 1]: " + input[j + 1]);
             newWeights[j] = (1 - alpha * regulizer) * weights[j] - alpha * (1.0 / count) * input[j + 1];
+            System.out.println(weights.length);
+            System.out.println(j);
+            System.out.println(input.length);
+            System.out.println(weights.length + j + 2);
+            System.out.println("mu");
+            System.out.println(mu);
+            System.out.println(mu.length);
+            System.out.println(j);
+            newWeights[j] = weights[j] - alpha * (input[j + 1] - input[weights.length + j + 2] + (1.0/count) * mu[j]) + lambda*alpha*weights[j];
+
 //            System.out.println("### newWeights[j]: " + newWeights[j]);
         }
 //        System.out.println(newWeights);
