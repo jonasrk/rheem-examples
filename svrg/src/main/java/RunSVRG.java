@@ -5,7 +5,6 @@ import org.qcri.rheem.core.api.RheemContext;
 import org.qcri.rheem.core.function.ExecutionContext;
 import org.qcri.rheem.core.function.FunctionDescriptor;
 import org.qcri.rheem.core.util.RheemCollections;
-import org.qcri.rheem.core.util.Tuple;
 import org.qcri.rheem.java.Java;
 import org.qcri.rheem.spark.Spark;
 
@@ -74,30 +73,6 @@ public class RunSVRG {
                 .map(new Transform(features)).withName("transform")
                 .withTargetPlatform(Java.platform());
 
-
-        // START OF OLD LOOP
-
-//        Collection<double[]> results  =
-//                weightsBuilder.doWhile(new LoopCondition(accuracy, max_iterations), w -> {
-//
-//                    DataQuantaBuilder<?, double[]> newWeightsDataset = transformBuilder
-//                            .sample(sampleSize)
-////                    .<double[]>customOperator(new SparkRandomPartitionSampleOperator<>(sampleSize, datasetSize, DataSetType.createDefault(double[].class)))
-////                    .withOutputClass(double[].class)
-//                            .map(new ComputeLogisticGradient()).withBroadcast(w, "weights").withName("compute")
-//                            .reduce(new Sum()).withName("reduce")
-//                            .map(new WeightsUpdate()).withBroadcast(w, "weights").withName("update");
-//
-//                    DataQuantaBuilder<?, Tuple2<Double, Double>> convergenceDataset = newWeightsDataset.map(new ComputeNorm()).withBroadcast(w, "weights");
-//
-//                    return new Tuple<>(newWeightsDataset, convergenceDataset);
-//                }).collect();
-
-        // END OF OLD LOOP
-
-
-        // START OF NEW, UNROLLED LOOP
-
         // START iteration ZERO
 
         List<Integer> current_iteration = Arrays.asList(0);
@@ -106,21 +81,23 @@ public class RunSVRG {
                 .loadCollection(current_iteration)
                 .withTargetPlatform(Java.platform());
 
-
-        // operator lists:
+        // Operator Lists:
         ArrayList<DataQuantaBuilder<?, double[]>> FullOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
         ArrayList<DataQuantaBuilder<?, double[]>> muOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
         ArrayList<DataQuantaBuilder<?, double[]>> PartialOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
 
-        PartialOperatorList.add(
+        muOperatorList.add(
                 transformBuilder
-//                        .sample(sampleSize)
                         .map(new ComputeLogisticGradientFullIteration())
                         .withTargetPlatform(Java.platform())
                         .withBroadcast(weightsBuilder, "weights")
                         .withName("compute")
                         .reduce(new Sum()).withName("reduce")
                         .withTargetPlatform(Java.platform())
+        );
+
+        FullOperatorList.add(
+                muOperatorList.get(muOperatorList.size() - 1)
                         .map(new WeightsUpdateFullIteration())
                         .withTargetPlatform(Java.platform())
                         .withBroadcast(weightsBuilder, "weights")
@@ -128,18 +105,24 @@ public class RunSVRG {
                         .withName("update")
         );
 
-
-
+        PartialOperatorList.add(
+                muOperatorList.get(muOperatorList.size() - 1)
+                        .map(new WeightsUpdateFullIteration())
+                        .withTargetPlatform(Java.platform())
+                        .withBroadcast(weightsBuilder, "weights")
+                        .withBroadcast(iteration_list, "current_iteration")
+                        .withName("update")
+        );
 
         // END iteration ZERO
 
         // START other iterations
 
-        int iterations = 3; // TODO JRK move to parameters
+        int iterations = 5; // TODO JRK move to parameters
 
         for (int i = 1; i < iterations; i++) {
 
-            if (false){//i == 3){
+            if (i == 2222){
 
 
                 current_iteration = Arrays.asList(i);
@@ -166,7 +149,7 @@ public class RunSVRG {
 //                        .withName("update"));
             }
 
-            else if (i % 2 == 1){
+            else if (i % 3 == 0){
 
                 current_iteration = Arrays.asList(i);
 
@@ -183,6 +166,13 @@ public class RunSVRG {
                         .withName("compute")
                         .reduce(new Sum()).withName("reduce")
                         .withTargetPlatform(Java.platform()));
+
+                PartialOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)
+                        .map(new WeightsUpdateFullIteration())
+                        .withTargetPlatform(Java.platform())
+                        .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
+                        .withBroadcast(iteration_list, "current_iteration")
+                        .withName("update"));
 
                 FullOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)
                         .map(new WeightsUpdateFullIteration())
@@ -202,14 +192,14 @@ public class RunSVRG {
                         .sample(1)
                         .withTargetPlatform(Java.platform())
                         .map(new ComputeLogisticGradient())
+                        .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weightsBar")
                         .withTargetPlatform(Java.platform())
-                        .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weights")
+                        .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         .withName("compute")
                         .map(new WeightsUpdate())
                         .withTargetPlatform(Java.platform())
                         .withBroadcast(muOperatorList.get(muOperatorList.size() - 1), "mu")
-                        .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weights")
-                        .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weightsBar")
+                        .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         // TODO JRK all these Full Operator references can not be right
                         .withBroadcast(iteration_list, "current_iteration")
                         .withName("update"));
