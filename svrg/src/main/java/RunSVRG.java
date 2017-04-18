@@ -63,11 +63,16 @@ public class RunSVRG {
         JavaPlanBuilder javaPlanBuilder = new JavaPlanBuilder(rheemContext);
 
         List<double[]> weights = Arrays.asList(new double[features]);
-        final DataQuantaBuilder<?, double[]> weightsBuilder = javaPlanBuilder.loadCollection(weights).withName("init weights");
+        final DataQuantaBuilder<?, double[]> weightsBuilder = javaPlanBuilder
+                .loadCollection(weights)
+                .withTargetPlatform(Java.platform())
+                .withName("init weights");
 
         final DataQuantaBuilder<?, double[]> transformBuilder = javaPlanBuilder
                 .readTextFile(fileName).withName("source")
-                .map(new Transform(features)).withName("transform");
+                .withTargetPlatform(Java.platform())
+                .map(new Transform(features)).withName("transform")
+                .withTargetPlatform(Java.platform());
 
 
         // START OF OLD LOOP
@@ -98,7 +103,8 @@ public class RunSVRG {
         List<Integer> current_iteration = Arrays.asList(0);
 
         DataQuantaBuilder<?, Integer> iteration_list = javaPlanBuilder
-                .loadCollection(current_iteration);
+                .loadCollection(current_iteration)
+                .withTargetPlatform(Java.platform());
 
 
         // operator lists:
@@ -106,9 +112,14 @@ public class RunSVRG {
         sampleOperatorList.add(
                 transformBuilder
 //                        .sample(sampleSize)
-                        .map(new ComputeLogisticGradientFullIteration()).withBroadcast(weightsBuilder, "weights").withName("compute")
+                        .map(new ComputeLogisticGradientFullIteration())
+                        .withTargetPlatform(Java.platform())
+                        .withBroadcast(weightsBuilder, "weights")
+                        .withName("compute")
                         .reduce(new Sum()).withName("reduce")
+                        .withTargetPlatform(Java.platform())
                         .map(new WeightsUpdateFullIteration())
+                        .withTargetPlatform(Java.platform())
                         .withBroadcast(weightsBuilder, "weights")
                         .withBroadcast(iteration_list, "current_iteration")
                         .withName("update")
@@ -121,7 +132,7 @@ public class RunSVRG {
 
         // START other iterations
 
-        int iterations = 3; // TODO JRK move to parameters
+        int iterations = 200; // TODO JRK move to parameters // TODO JRK 20 iterations already runs more than a minute
 
         for (int i = 1; i < iterations; i++) {
 
@@ -130,7 +141,8 @@ public class RunSVRG {
                 current_iteration = Arrays.asList(i);
 
                 iteration_list = javaPlanBuilder
-                        .loadCollection(current_iteration);
+                        .loadCollection(current_iteration)
+                        .withTargetPlatform(Java.platform());
 
                 muOperatorList.add(transformBuilder
 //                    .sample(sampleSize)
@@ -153,9 +165,8 @@ public class RunSVRG {
                 current_iteration = Arrays.asList(i);
 
                 iteration_list = javaPlanBuilder
-                        .loadCollection(current_iteration);
-
-                System.out.println("mu list:" + Arrays.toString(RheemCollections.getSingle(sampleOperatorList.get(muOperatorList.size() - 1).collect())));
+                        .loadCollection(current_iteration)
+                        .withTargetPlatform(Java.platform());
 
                 sampleOperatorList.add(transformBuilder
                         .sample(1)
@@ -165,17 +176,13 @@ public class RunSVRG {
                         .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
                         .withName("compute")
                         .map(new WeightsUpdate())
+                        .withTargetPlatform(Java.platform())
                         .withBroadcast(muOperatorList.get(muOperatorList.size() - 1), "mu")
                         .withBroadcast(sampleOperatorList.get(sampleOperatorList.size() - 1), "weights")
                         .withBroadcast(iteration_list, "current_iteration")
-                        .withTargetPlatform(Java.platform())
                         .withName("update"));
-
-
             }
-
         }
-
         // END other iterations
 
         // END OF NEW LOOP
@@ -321,15 +328,8 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
 //            System.out.println("### count: " + count);
 //            System.out.println("### input[j + 1]: " + input[j + 1]);
             newWeights[j] = (1 - alpha * regulizer) * weights[j] - alpha * (1.0 / count) * input[j + 1];
-            System.out.println(weights.length);
-            System.out.println(j);
-            System.out.println(input.length);
-            System.out.println(weights.length + j + 2);
-            System.out.println("mu");
-            System.out.println(mu);
-            System.out.println(mu.length);
-            System.out.println(j);
-            newWeights[j] = weights[j] - alpha * (input[j + 1] - input[weights.length + j + 2] + (1.0/count) * mu[j]) + lambda*alpha*weights[j];
+            // TODO JRK I changed input[weights.length + j + 2] to input[j + 2] but don't really know why
+            newWeights[j] = weights[j] - alpha * (input[j + 1] - input[j + 1] + (1.0/count) * mu[j]) + lambda*alpha*weights[j];
 
 //            System.out.println("### newWeights[j]: " + newWeights[j]);
         }
@@ -340,6 +340,7 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
     @Override
     public void open(ExecutionContext executionContext) {
         this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
+        this.mu = (double[]) executionContext.getBroadcast("mu").iterator().next();
         this.current_iteration = ((Integer) executionContext.getBroadcast("current_iteration").iterator().next());
     }
 }
