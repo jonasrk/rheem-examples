@@ -4,6 +4,7 @@ import org.qcri.rheem.basic.data.Tuple2;
 import org.qcri.rheem.core.api.RheemContext;
 import org.qcri.rheem.core.function.ExecutionContext;
 import org.qcri.rheem.core.function.FunctionDescriptor;
+import org.qcri.rheem.core.platform.Platform;
 import org.qcri.rheem.core.util.RheemCollections;
 import org.qcri.rheem.java.Java;
 import org.qcri.rheem.spark.Spark;
@@ -31,6 +32,8 @@ public class RunSVRG {
     static double accuracy = 0.001;
     static int max_iterations = 1000;
 
+    static Platform full_iteration_platform = Java.platform();
+    static Platform partial_iteration_platform = Java.platform();
 
     public static void main (String... args) throws MalformedURLException {
 
@@ -42,9 +45,19 @@ public class RunSVRG {
             max_iterations = Integer.parseInt(args[3]);
             accuracy = Double.parseDouble(args[4]);
             sampleSize = Integer.parseInt(args[5]);
+            if (args[6] == "all_spark"){
+                full_iteration_platform = Spark.platform();
+                partial_iteration_platform = Spark.platform();
+            } else if (args[6] == "all_java"){
+                full_iteration_platform = Java.platform();
+                partial_iteration_platform = Java.platform();
+            } else if (args[6] == "mixed"){
+                full_iteration_platform = Spark.platform();
+                partial_iteration_platform = Java.platform();
+            }
         }
         else {
-            System.out.println("Usage: java <main class> [<dataset path> <dataset size> <#features> <max iterations> <accuracy> <sample size>]");
+            System.out.println("Usage: java <main class> [<dataset path> <dataset size> <#features> <max iterations> <accuracy> <sample size> <platform:all_spark|all_java|mixed>]");
             System.out.println("Loading default values");
         }
 
@@ -64,14 +77,14 @@ public class RunSVRG {
         List<double[]> weights = Arrays.asList(new double[features]);
         final DataQuantaBuilder<?, double[]> weightsBuilder = javaPlanBuilder
                 .loadCollection(weights)
-                .withTargetPlatform(Java.platform())
+                .withTargetPlatform(partial_iteration_platform)
                 .withName("init weights");
 
         final DataQuantaBuilder<?, double[]> transformBuilder = javaPlanBuilder
                 .readTextFile(fileName).withName("source")
-                .withTargetPlatform(Java.platform())
+                .withTargetPlatform(partial_iteration_platform)
                 .map(new Transform(features)).withName("transform")
-                .withTargetPlatform(Java.platform());
+                .withTargetPlatform(partial_iteration_platform); // TODO JRK Double Check which platform should do this
 
         // START iteration ZERO
 
@@ -79,7 +92,7 @@ public class RunSVRG {
 
         DataQuantaBuilder<?, Integer> iteration_list = javaPlanBuilder
                 .loadCollection(current_iteration)
-                .withTargetPlatform(Java.platform());
+                .withTargetPlatform(full_iteration_platform);
 
         // Operator Lists:
         ArrayList<DataQuantaBuilder<?, double[]>> FullOperatorList = new ArrayList<DataQuantaBuilder<?, double[]>>();
@@ -89,17 +102,17 @@ public class RunSVRG {
         muOperatorList.add(
                 transformBuilder
                         .map(new ComputeLogisticGradientFullIteration())
-                        .withTargetPlatform(Java.platform())
+                        .withTargetPlatform(full_iteration_platform)
                         .withBroadcast(weightsBuilder, "weights")
                         .withName("compute")
                         .reduce(new Sum()).withName("reduce")
-                        .withTargetPlatform(Java.platform())
+                        .withTargetPlatform(full_iteration_platform)
         );
 
         FullOperatorList.add(
                 muOperatorList.get(muOperatorList.size() - 1)
                         .map(new WeightsUpdateFullIteration())
-                        .withTargetPlatform(Java.platform())
+                        .withTargetPlatform(full_iteration_platform)
                         .withBroadcast(weightsBuilder, "weights")
                         .withBroadcast(iteration_list, "current_iteration")
                         .withName("update")
@@ -108,7 +121,7 @@ public class RunSVRG {
         PartialOperatorList.add(
                 muOperatorList.get(muOperatorList.size() - 1)
                         .map(new WeightsUpdateFullIteration())
-                        .withTargetPlatform(Java.platform())
+                        .withTargetPlatform(full_iteration_platform)
                         .withBroadcast(weightsBuilder, "weights")
                         .withBroadcast(iteration_list, "current_iteration")
                         .withName("update")
@@ -118,38 +131,32 @@ public class RunSVRG {
 
         // START other iterations
 
-        int iterations = 100; // TODO JRK move to parameters
+        int iterations = 650; // TODO JRK move to parameters // so far 650 is maximum
 
         for (int i = 1; i < iterations; i++) {
 
-           if (i % 3 == 0){
+           if (i % 50 == 0){
 
                 FullOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)
                         .map(new WeightsUpdateFullIteration())
-                        .withTargetPlatform(Java.platform())
+                        .withTargetPlatform(full_iteration_platform)
                         .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         .withBroadcast(iteration_list, "current_iteration")
                         .withName("update"));
-//                        .map ( x -> {System.out.println("### " + x ); return x;})
-//                        .withTargetPlatform(Java.platform())
-
-
-
-//                System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(FullOperatorList.get(FullOperatorList.size() - 1).collect())));
 
                 current_iteration = Arrays.asList(i);
 
                 iteration_list = javaPlanBuilder
                         .loadCollection(current_iteration)
-                        .withTargetPlatform(Java.platform());
+                        .withTargetPlatform(full_iteration_platform);
 
                 muOperatorList.add(transformBuilder
                         .map(new ComputeLogisticGradientFullIteration())
-                        .withTargetPlatform(Java.platform())
+                        .withTargetPlatform(full_iteration_platform)
                         .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         .withName("compute")
                         .reduce(new Sum()).withName("reduce")
-                        .withTargetPlatform(Java.platform())); // returns the gradientBar from the full iteration for all training examples
+                        .withTargetPlatform(full_iteration_platform)); // returns the gradientBar from the full iteration for all training examples
 
 
             } else { // partial iteration
@@ -158,20 +165,20 @@ public class RunSVRG {
 
                 iteration_list = javaPlanBuilder
                         .loadCollection(current_iteration)
-                        .withTargetPlatform(Java.platform());
+                        .withTargetPlatform(partial_iteration_platform);
 
                 PartialOperatorList.add(transformBuilder
                         .sample(1)
-                        .withTargetPlatform(Java.platform())
+                        .withTargetPlatform(partial_iteration_platform)
 
                         .map(new ComputeLogisticGradient())
                         .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weightsBar")
-                        .withTargetPlatform(Java.platform())
+                        .withTargetPlatform(partial_iteration_platform)
                         .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         .withName("compute") // returns both weights and weightsBar in a single array
 //
                         .map(new WeightsUpdate())
-                        .withTargetPlatform(Java.platform())
+                        .withTargetPlatform(partial_iteration_platform)
                         .withBroadcast(muOperatorList.get(muOperatorList.size() - 1), "mu")
                         .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         .withBroadcast(iteration_list, "current_iteration")
