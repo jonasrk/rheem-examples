@@ -118,61 +118,11 @@ public class RunSVRG {
 
         // START other iterations
 
-        int iterations = 5; // TODO JRK move to parameters
+        int iterations = 100; // TODO JRK move to parameters
 
         for (int i = 1; i < iterations; i++) {
 
-            if (i == 2222){
-
-
-                current_iteration = Arrays.asList(i);
-
-                iteration_list = javaPlanBuilder
-                        .loadCollection(current_iteration)
-                        .withTargetPlatform(Java.platform());
-
-                muOperatorList.add(transformBuilder
-//                    .sample(sampleSize)
-//                    .withTargetPlatform(Java.platform())
-                        .map(new ComputeLogisticGradientFullIteration())
-                        .withTargetPlatform(Java.platform())
-                        .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
-                        .withName("compute")
-                        .reduce(new Sum()).withName("reduce")
-                        .withTargetPlatform(Java.platform()));
-
-                FullOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)); // TODO JRK I need this. why crash?
-//                        .map(new WeightsUpdateFullIteration())
-//                        .withTargetPlatform(Java.platform())
-//                        .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
-//                        .withBroadcast(iteration_list, "current_iteration")
-//                        .withName("update"));
-            }
-
-            else if (i % 3 == 0){
-
-                current_iteration = Arrays.asList(i);
-
-                iteration_list = javaPlanBuilder
-                        .loadCollection(current_iteration)
-                        .withTargetPlatform(Java.platform());
-
-                muOperatorList.add(transformBuilder
-//                    .sample(sampleSize)
-//                    .withTargetPlatform(Java.platform())
-                        .map(new ComputeLogisticGradientFullIteration())
-                        .withTargetPlatform(Java.platform())
-                        .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
-                        .withName("compute")
-                        .reduce(new Sum()).withName("reduce")
-                        .withTargetPlatform(Java.platform()));
-
-                PartialOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)
-                        .map(new WeightsUpdateFullIteration())
-                        .withTargetPlatform(Java.platform())
-                        .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
-                        .withBroadcast(iteration_list, "current_iteration")
-                        .withName("update"));
+           if (i % 3 == 0){
 
                 FullOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)
                         .map(new WeightsUpdateFullIteration())
@@ -180,7 +130,29 @@ public class RunSVRG {
                         .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         .withBroadcast(iteration_list, "current_iteration")
                         .withName("update"));
-            } else {
+//                        .map ( x -> {System.out.println("### " + x ); return x;})
+//                        .withTargetPlatform(Java.platform())
+
+
+
+//                System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(FullOperatorList.get(FullOperatorList.size() - 1).collect())));
+
+                current_iteration = Arrays.asList(i);
+
+                iteration_list = javaPlanBuilder
+                        .loadCollection(current_iteration)
+                        .withTargetPlatform(Java.platform());
+
+                muOperatorList.add(transformBuilder
+                        .map(new ComputeLogisticGradientFullIteration())
+                        .withTargetPlatform(Java.platform())
+                        .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
+                        .withName("compute")
+                        .reduce(new Sum()).withName("reduce")
+                        .withTargetPlatform(Java.platform())); // returns the gradientBar from the full iteration for all training examples
+
+
+            } else { // partial iteration
 
                 current_iteration = Arrays.asList(i);
 
@@ -191,18 +163,22 @@ public class RunSVRG {
                 PartialOperatorList.add(transformBuilder
                         .sample(1)
                         .withTargetPlatform(Java.platform())
+
                         .map(new ComputeLogisticGradient())
                         .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weightsBar")
                         .withTargetPlatform(Java.platform())
                         .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
-                        .withName("compute")
+                        .withName("compute") // returns both weights and weightsBar in a single array
+//
                         .map(new WeightsUpdate())
                         .withTargetPlatform(Java.platform())
                         .withBroadcast(muOperatorList.get(muOperatorList.size() - 1), "mu")
                         .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
-                        // TODO JRK all these Full Operator references can not be right
                         .withBroadcast(iteration_list, "current_iteration")
                         .withName("update"));
+
+//                System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(PartialOperatorList.get(PartialOperatorList.size() - 1).collect())));
+
             }
         }
         // END other iterations
@@ -348,9 +324,9 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
     @Override
     public double[] apply(double[] input) {
 
-        double count = input[0];
+        double count = 100827;//input[0]; // TODO JRK Do not dare to hardcode
         double alpha = (stepSize / (current_iteration+1));
-        System.out.println("### current_iteration: " + current_iteration);
+//        System.out.println("### current_iteration: " + current_iteration);
 
         double[] newWeights = new double[weights.length];
         for (int j = 0; j < weights.length; j++) {
@@ -359,9 +335,16 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
             double step_size_term = alpha * (1.0 / count);
             double gradient_term = input[j + 1];
             newWeights[j] = regulizer_term * old_weight_term - step_size_term * gradient_term;
-            double svrg_gradient_term =  (input[j + 1] - input[weights.length + j + 2] + (1.0/count) * mu[j]);
+            double svrg_gradient_term =  input[j + 1] - input[weights.length + j + 2] + (1.0/count) * mu[j];
             double svrg_regulizer_term = lambda*alpha*weights[j]; // TODO JRK is it really?
             double svrg_stepsize_term = alpha;
+//            System.out.println("### old_weight_term: " + old_weight_term);
+//            System.out.println("### svrg_stepsize_term: " + svrg_stepsize_term);
+//            System.out.println("### svrg_gradient_term: " + svrg_gradient_term);
+//            System.out.println("### svrg_gradient_term - (1.0/count) * mu[j]: " + (1.0/count) * mu[j]);
+//            System.out.println("### svrg_gradient_term - count: " + count);
+//            System.out.println("### svrg_gradient_term - mu[j]: " + mu[j]);
+//            System.out.println("### svrg_regulizer_term: " + svrg_regulizer_term);
             newWeights[j] = old_weight_term - svrg_stepsize_term * svrg_gradient_term + svrg_regulizer_term;
         }
         return newWeights;
@@ -401,7 +384,7 @@ class WeightsUpdateFullIteration implements FunctionDescriptor.ExtendedSerializa
         double alpha = (stepSize / (current_iteration+1));
 //        System.out.println("### alpha: " + alpha);
 //        System.out.println("### stepSize: " + stepSize);
-        System.out.println("### current_iteration: " + current_iteration);
+//        System.out.println("### current_iteration: " + current_iteration);
 
         double[] newWeights = new double[weights.length];
         for (int j = 0; j < weights.length; j++) {
