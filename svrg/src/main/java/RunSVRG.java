@@ -11,10 +11,7 @@ import org.qcri.rheem.spark.Spark;
 
 import java.io.File;
 import java.net.MalformedURLException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
+import java.util.*;
 
 
 /**
@@ -32,8 +29,7 @@ public class RunSVRG {
     static double accuracy = 0.001;
     static int max_iterations = 1000;
 
-    static Platform full_iteration_platform = Java.platform();
-    static Platform partial_iteration_platform = Java.platform();
+    static Platform full_iteration_platform, partial_iteration_platform;
 
     public static void main (String... args) throws MalformedURLException {
 
@@ -45,13 +41,13 @@ public class RunSVRG {
             max_iterations = Integer.parseInt(args[3]);
             accuracy = Double.parseDouble(args[4]);
             sampleSize = Integer.parseInt(args[5]);
-            if (args[6] == "all_spark"){
+            if (args[6].equals("all_spark")){
                 full_iteration_platform = Spark.platform();
                 partial_iteration_platform = Spark.platform();
-            } else if (args[6] == "all_java"){
+            } else if (args[6].equals("all_java")){
                 full_iteration_platform = Java.platform();
                 partial_iteration_platform = Java.platform();
-            } else if (args[6] == "mixed"){
+            } else if (args[6].equals("mixed")){
                 full_iteration_platform = Spark.platform();
                 partial_iteration_platform = Java.platform();
             }
@@ -65,6 +61,8 @@ public class RunSVRG {
 
         System.out.println("max #iterations:" + max_iterations);
         System.out.println("accuracy:" + accuracy);
+        System.out.println("full_iteration_platform:" + full_iteration_platform);
+        System.out.println("partial_iteration_platform:" + partial_iteration_platform);
 
         new RunSVRG().execute(file, features);
     }
@@ -131,7 +129,7 @@ public class RunSVRG {
 
         // START other iterations
 
-        int iterations = 650; // TODO JRK move to parameters // so far 650 is maximum
+        int iterations = 5; // TODO JRK move to parameters // so far 650 is maximum
 
         for (int i = 1; i < iterations; i++) {
 
