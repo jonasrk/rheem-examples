@@ -31,7 +31,7 @@ public class RunSGD {
     //these are for SGD/mini run to convergence
     static int sampleSize = 10;
     static double accuracy = 0.001;
-    static int max_iterations = 1000;
+    static int max_iterations = 1200;
 
 
     public static void main (String... args) throws MalformedURLException {
@@ -70,7 +70,7 @@ public class RunSGD {
                 .readTextFile(fileName).withName("source")
                 .map(new Transform(features)).withName("transform");
 
-        Collection<double[]> results  =
+        DataQuantaBuilder<?, double[]> results = //Collection<double[]> results  =
                 weightsBuilder.doWhile(new LoopCondition(accuracy, max_iterations), w -> {
 
                     DataQuantaBuilder<?, double[]> newWeightsDataset = transformBuilder
@@ -83,9 +83,18 @@ public class RunSGD {
                     DataQuantaBuilder<?, Tuple2<Double, Double>> convergenceDataset = newWeightsDataset.map(new ComputeNorm()).withBroadcast(w, "weights");
 
                     return new Tuple<>(newWeightsDataset, convergenceDataset);
-                }).collect();
+                });//.collect();
 
-        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(results)));
+//        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(results)));
+
+
+        Collection<double[]>  resultsCost = transformBuilder
+                .map(new Cost())
+                .withBroadcast(results, "weights")
+                .reduce(new Sum())
+                .collect();
+
+        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(resultsCost)));
 
     }
 }
@@ -158,6 +167,31 @@ class Sum implements FunctionDescriptor.SerializableBinaryOperator<double[]> {
             sum[i] = g1[i] + g2[i];
 
         return sum;
+    }
+}
+
+class Cost implements FunctionDescriptor.ExtendedSerializableFunction<double[], double[]> {
+
+    double[] weights;
+
+    @Override
+    public double[] apply(double[] point) {
+        double dot = 0;
+        for (int j = 0; j < weights.length; j++)
+            dot += weights[j] * point[j + 1];
+
+        double cost = 1 + Math.exp(-1 * point[0] * dot);
+        cost = Math.log(cost);
+
+        double[] out = {cost};
+//        System.out.println("cost:");
+//        System.out.println(cost);
+        return out;
+    }
+
+    @Override
+    public void open(ExecutionContext executionContext) {
+        this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
     }
 }
 
