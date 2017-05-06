@@ -31,7 +31,7 @@ public class RunSGD {
     //these are for SGD/mini run to convergence
     static int sampleSize = 10;
     static double accuracy = 0.001;
-    static int max_iterations = 1000;
+    static int max_iterations = 1200;
 
 
     public static void main (String... args) throws MalformedURLException {
@@ -70,7 +70,7 @@ public class RunSGD {
                 .readTextFile(fileName).withName("source")
                 .map(new Transform(features)).withName("transform");
 
-        Collection<double[]> results  =
+        DataQuantaBuilder<?, double[]> results = //Collection<double[]> results  =
                 weightsBuilder.doWhile(new LoopCondition(accuracy, max_iterations), w -> {
 
             DataQuantaBuilder<?, double[]> newWeightsDataset = transformBuilder
@@ -80,12 +80,21 @@ public class RunSGD {
                     .reduce(new Sum()).withName("reduce")
                     .map(new WeightsUpdate()).withBroadcast(w, "weights").withName("update");
 
-            DataQuantaBuilder<?, Tuple2<Double, Double>> convergenceDataset = newWeightsDataset.map(new ComputeNorm()).withBroadcast(w, "weights");
+                    DataQuantaBuilder<?, Tuple2<Double, Double>> convergenceDataset = newWeightsDataset.map(new ComputeNorm()).withBroadcast(w, "weights");
 
-            return new Tuple<>(newWeightsDataset, convergenceDataset);
-        }).collect();
+                    return new Tuple<>(newWeightsDataset, convergenceDataset);
+                });//.collect();
 
-        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(results)));
+//        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(results)));
+
+
+        Collection<double[]>  resultsCost = transformBuilder
+                .map(new Cost())
+                .withBroadcast(results, "weights")
+                .reduce(new Sum())
+                .collect();
+
+        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(resultsCost)));
 
     }
 }
@@ -161,6 +170,31 @@ class Sum implements FunctionDescriptor.SerializableBinaryOperator<double[]> {
     }
 }
 
+class Cost implements FunctionDescriptor.ExtendedSerializableFunction<double[], double[]> {
+
+    double[] weights;
+
+    @Override
+    public double[] apply(double[] point) {
+        double dot = 0;
+        for (int j = 0; j < weights.length; j++)
+            dot += weights[j] * point[j + 1];
+
+        double cost = 1 + Math.exp(-1 * point[0] * dot);
+        cost = Math.log(cost);
+
+        double[] out = {cost};
+//        System.out.println("cost:");
+//        System.out.println(cost);
+        return out;
+    }
+
+    @Override
+    public void open(ExecutionContext executionContext) {
+        this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
+    }
+}
+
 class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<double[], double[]> {
 
     double[] weights;
@@ -192,6 +226,7 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
     public void open(ExecutionContext executionContext) {
         this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
         this.current_iteration = executionContext.getCurrentIteration();
+        System.out.println(this.current_iteration);
     }
 }
 
