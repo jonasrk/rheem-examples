@@ -62,7 +62,8 @@ public class RunSGD {
 
     public void execute(String fileName, int features) {
         RheemContext rheemContext = new RheemContext().with(Java.basicPlugin()).with(Spark.basicPlugin());
-        JavaPlanBuilder javaPlanBuilder = new JavaPlanBuilder(rheemContext);
+        JavaPlanBuilder javaPlanBuilder = new JavaPlanBuilder(rheemContext)
+                .withUdfJarOf(this);
 
         List<double[]> weights = Arrays.asList(new double[features]);
         final DataQuantaBuilder<?, double[]> weightsBuilder = javaPlanBuilder
