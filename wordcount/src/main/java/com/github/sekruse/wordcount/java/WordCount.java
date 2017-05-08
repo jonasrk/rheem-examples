@@ -81,10 +81,12 @@ public class WordCount {
                 // Filter empty tokens.
                 .filter(token -> !token.isEmpty())
                 .withSelectivity(0.99, 0.99, 0.99)
+                .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> 32198))
                 .withName("Filter empty words")
 
                 // Attach counter to each word.
                 .map(word -> new Tuple2<>(caseSensitive ? word : word.toLowerCase(), 1)).withName("To lower case, add counter")
+                .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> 32198))
 
                 // Sum up counters for every word.
                 .reduceByKey(
