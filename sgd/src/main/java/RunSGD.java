@@ -4,6 +4,7 @@ import org.qcri.rheem.basic.data.Tuple2;
 import org.qcri.rheem.core.api.RheemContext;
 import org.qcri.rheem.core.function.ExecutionContext;
 import org.qcri.rheem.core.function.FunctionDescriptor;
+import org.qcri.rheem.core.optimizer.cardinality.DefaultCardinalityEstimator;
 import org.qcri.rheem.core.types.DataSetType;
 import org.qcri.rheem.core.util.RheemCollections;
 import org.qcri.rheem.core.util.Tuple;
@@ -64,26 +65,37 @@ public class RunSGD {
         JavaPlanBuilder javaPlanBuilder = new JavaPlanBuilder(rheemContext);
 
         List<double[]> weights = Arrays.asList(new double[features]);
-        final DataQuantaBuilder<?, double[]> weightsBuilder = javaPlanBuilder.loadCollection(weights).withName("init weights");
+        final DataQuantaBuilder<?, double[]> weightsBuilder = javaPlanBuilder
+                .loadCollection(weights)
+                .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> 1))
+                .withName("init weights");
 
         final DataQuantaBuilder<?, double[]> transformBuilder = javaPlanBuilder
                 .readTextFile(fileName).withName("source")
-                .map(new Transform(features)).withName("transform");
+                .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> datasetSize))
+                .map(new Transform(features)).withName("transform")
+                .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> datasetSize));
 
         Collection<double[]> results  =
                 weightsBuilder.doWhile(new LoopCondition(accuracy, max_iterations), w -> {
 
                     DataQuantaBuilder<?, double[]> newWeightsDataset = transformBuilder
                             .sample(sampleSize).withBroadcast(w, "weights").withName("sample")
+                            .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> sampleSize))
 //                    .<double[]>customOperator(new SparkRandomPartitionSampleOperator<>(sampleSize, datasetSize, DataSetType.createDefault(double[].class))).withBroadcast(w, "weights").withOutputClass(double[].class)
                             .map(new ComputeLogisticGradient()).withBroadcast(w, "weights").withName("compute")
+                            .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> sampleSize))
                             .reduce(new Sum()).withName("reduce")
-                            .map(new WeightsUpdate()).withBroadcast(w, "weights").withName("update");
+                            .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> 1))
+                            .map(new WeightsUpdate()).withBroadcast(w, "weights").withName("update")
+                            .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> 1));
 
                     DataQuantaBuilder<?, Tuple2<Double, Double>> convergenceDataset = newWeightsDataset.map(new ComputeNorm()).withBroadcast(w, "weights");
 
                     return new Tuple<>(newWeightsDataset, convergenceDataset);
-                }).collect();
+                })
+                        .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> 1))
+                        .collect();
 
         System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(results)));
 
