@@ -50,12 +50,12 @@ public class RunSGD {
             System.out.println("Loading default values");
         }
 
-        String file = new File(relativePath).getAbsoluteFile().toURI().toURL().toString();
+        //String file = new File(relativePath).getAbsoluteFile().toURI().toURL().toString();
 
         System.out.println("max #iterations:" + max_iterations);
         System.out.println("accuracy:" + accuracy);
 
-        new RunSGD().execute(file, features);
+        new RunSGD().execute(relativePath, features);
     }
 
 
