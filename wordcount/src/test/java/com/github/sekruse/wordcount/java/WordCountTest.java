@@ -54,6 +54,7 @@ public class WordCountTest {
         String[] args = new String[]{
                 "java,spark",
                 ReflectionUtils.getResourceURL("lorem-ipsum.txt").toString(),
+                "--case-sensitive=False",
                 "100..200"
         };
         WordCount.main(args);
@@ -64,6 +65,7 @@ public class WordCountTest {
         String[] args = new String[]{
                 "java,spark",
                 ReflectionUtils.getResourceURL("lorem-ipsum.txt").toString(),
+                "--case-sensitive=False",
         };
         WordCount.main(args);
     }
