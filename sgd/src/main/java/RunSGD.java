@@ -25,7 +25,7 @@ import java.util.List;
 public class RunSGD {
 
     // Default parameters.
-    static String relativePath = "sgd/src/main/resources/adult.zeros";
+    static String relativePath = "file:/Users/Jonas/rheem-examples/sgd/src/main/resources/adult.zeros";
     static int datasetSize  = 100827;
     static int features = 123;
 
@@ -67,13 +67,13 @@ public class RunSGD {
         List<double[]> weights = Arrays.asList(new double[features]);
         final DataQuantaBuilder<?, double[]> weightsBuilder = javaPlanBuilder
                 .loadCollection(weights)
-                .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> 1))
+//                .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> 1)) // TODO JRK Why doesn't this work?
                 .withName("init weights");
 
         final DataQuantaBuilder<?, double[]> transformBuilder = javaPlanBuilder
                 .readTextFile(fileName).withName("source")
-                .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> datasetSize))
-                .map(new Transform(features)).withName("transform")
+//                .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> datasetSize)) // TODO JRK Why doesn't this work?
+                .map(new Transform(features)).withName("transform")//;
                 .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> datasetSize));
 
         Collection<double[]> results  =
@@ -87,14 +87,14 @@ public class RunSGD {
                             .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> sampleSize))
                             .reduce(new Sum()).withName("reduce")
                             .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> 1))
-                            .map(new WeightsUpdate()).withBroadcast(w, "weights").withName("update")
+                            .map(new WeightsUpdate()).withBroadcast(w, "weights").withName("update")//;
                             .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> 1));
 
                     DataQuantaBuilder<?, Tuple2<Double, Double>> convergenceDataset = newWeightsDataset.map(new ComputeNorm()).withBroadcast(w, "weights");
 
                     return new Tuple<>(newWeightsDataset, convergenceDataset);
                 })
-                        .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> 1))
+//                        .withCardinalityEstimator(new DefaultCardinalityEstimator(1, 1, false, in -> 1)) // TODO JRK Why doesn't this work?
                         .collect();
 
         System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(results)));
